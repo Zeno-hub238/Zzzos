@@ -1,10 +1,10 @@
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
--- สร้างหน้าต่างหลัก
+-- // สร้างหน้าต่างหลักตามรูปแบบในรูปภาพ
 local Window = Rayfield:CreateWindow({
    Name = "Hermanos'Dev | PVP",
-   LoadingTitle = "Loading Script...",
-   LoadingSubtitle = "by Bloxscript.com",
+   LoadingTitle = "Bloxscript.com PVP",
+   LoadingSubtitle = "by Hermanos",
    ConfigurationSaving = {
       Enabled = true,
       FolderName = "HermanosConfig",
@@ -12,30 +12,38 @@ local Window = Rayfield:CreateWindow({
    }
 })
 
--- // ตัวแปรสำหรับระบบ Aim & Spin
+-- // การตั้งค่าเริ่มต้น
 local Settings = {
     ShowFOV = true,
     FOVRadius = 150,
     SilentAim = true,
     TargetPart = "Head",
     SpinEnabled = false,
-    SpinSpeed = 50
+    SpinSpeed = 50,
+    FOVMode = "Middle" -- ล็อกกลางหน้าจอตามที่คุณต้องการ
 }
 
--- // สร้างวงกลม FOV และเส้น Snapline
+-- // สร้างวงกลม FOV สีเหลือง
 local FOVCircle = Drawing.new("Circle")
 FOVCircle.Thickness = 2
-FOVCircle.Color = Color3.fromRGB(255, 255, 0)
+FOVCircle.Color = Color3.fromRGB(255, 255, 0) -- สีเหลือง
 FOVCircle.Visible = Settings.ShowFOV
+FOVCircle.Filled = false
 
+-- // สร้างเส้น Snapline สีแดง
 local SnapLine = Drawing.new("Line")
 SnapLine.Thickness = 1.5
-SnapLine.Color = Color3.fromRGB(255, 0, 0)
+SnapLine.Color = Color3.fromRGB(255, 0, 0) -- สีแดง
 SnapLine.Visible = false
 
--- // หมวดหมู่ Combat (เหมือนในรูป)
-local CombatTab = Window:CreateTab("Combat", 4483362458) -- ไอคอนดาบ
+-- // สร้างหมวดหมู่ตามรูปภาพ
+local GeneralTab = Window:CreateTab("General", 4483362458)
+local CombatTab = Window:CreateTab("Combat", 4483362458)
+local WeaponModTab = Window:CreateTab("Weapon Mod", 4483362458)
+local CosmeticTab = Window:CreateTab("Cosmetic", 4483362458)
+local EspTab = Window:CreateTab("Esp", 4483362458)
 
+-- // ส่วนควบคุมในหมวด Combat
 CombatTab:CreateToggle({
    Name = "Show FOV",
    CurrentValue = true,
@@ -57,6 +65,23 @@ CombatTab:CreateSlider({
 })
 
 CombatTab:CreateDropdown({
+   Name = "FOV Mode",
+   Options = {"Middle", "Mouse"},
+   CurrentOption = "Middle",
+   Callback = function(Option)
+      Settings.FOVMode = Option
+   end,
+})
+
+CombatTab:CreateToggle({
+   Name = "Magic Bullet / Silent Aim",
+   CurrentValue = true,
+   Callback = function(Value)
+      Settings.SilentAim = Value
+   end,
+})
+
+CombatTab:CreateDropdown({
    Name = "Aim Part",
    Options = {"Head", "HumanoidRootPart"},
    CurrentOption = "Head",
@@ -66,37 +91,37 @@ CombatTab:CreateDropdown({
 })
 
 CombatTab:CreateToggle({
-   Name = "Block Spin (Anti-Aim)",
+   Name = "Block Spin",
    CurrentValue = false,
    Callback = function(Value)
       Settings.SpinEnabled = Value
    end,
 })
 
--- // หมวดหมู่อื่นๆ (ตัวอย่างโครงสร้างตามรูป)
-local GeneralTab = Window:CreateTab("General", 4483362458)
-local WeaponModTab = Window:CreateTab("Weapon Mod", 4483362458)
-local EspTab = Window:CreateTab("Esp", 4483362458)
-
--- // ระบบการทำงานเบื้องหลัง
+-- // ระบบการทำงานหลัก
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
-local Mouse = LocalPlayer:GetMouse()
+local Camera = workspace.CurrentCamera
 
 RunService.RenderStepped:Connect(function()
-    -- อัปเดต FOV
-    FOVCircle.Position = Vector2.new(Mouse.X, Mouse.Y + 36)
+    local ScreenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+    local Mouse = game:GetService("UserInputService"):GetMouseLocation()
+    
+    -- ตั้งค่าตำแหน่งวงกลม FOV
+    local TargetCenter = (Settings.FOVMode == "Middle") and ScreenCenter or Mouse
+    FOVCircle.Position = TargetCenter
     FOVCircle.Radius = Settings.FOVRadius
     
-    -- หาเป้าหมายที่ใกล้ที่สุด
+    -- ระบบหาเป้าหมายและเส้น Snapline สีแดง
     local target = nil
     local shortestDistance = Settings.FOVRadius
+    
     for _, v in pairs(Players:GetPlayers()) do
         if v ~= LocalPlayer and v.Character and v.Character:FindFirstChild(Settings.TargetPart) then
-            local pos, onScreen = workspace.CurrentCamera:WorldToViewportPoint(v.Character[Settings.TargetPart].Position)
+            local pos, onScreen = Camera:WorldToViewportPoint(v.Character[Settings.TargetPart].Position)
             if onScreen then
-                local distance = (Vector2.new(pos.X, pos.Y) - Vector2.new(Mouse.X, Mouse.Y)).Magnitude
+                local distance = (Vector2.new(pos.X, pos.Y) - TargetCenter).Magnitude
                 if distance < shortestDistance then
                     target = v.Character[Settings.TargetPart]
                     shortestDistance = distance
@@ -105,10 +130,9 @@ RunService.RenderStepped:Connect(function()
         end
     end
 
-    -- แสดงเส้นสีแดง
     if target and Settings.SilentAim then
-        local targetPos, _ = workspace.CurrentCamera:WorldToViewportPoint(target.Position)
-        SnapLine.From = Vector2.new(Mouse.X, Mouse.Y + 36)
+        local targetPos, _ = Camera:WorldToViewportPoint(target.Position)
+        SnapLine.From = TargetCenter
         SnapLine.To = Vector2.new(targetPos.X, targetPos.Y)
         SnapLine.Visible = true
     else
