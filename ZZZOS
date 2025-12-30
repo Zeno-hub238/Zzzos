@@ -1,41 +1,100 @@
-Lua
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+-- สร้างหน้าต่างหลัก
+local Window = Rayfield:CreateWindow({
+   Name = "Hermanos'Dev | PVP",
+   LoadingTitle = "Loading Script...",
+   LoadingSubtitle = "by Bloxscript.com",
+   ConfigurationSaving = {
+      Enabled = true,
+      FolderName = "HermanosConfig",
+      FileName = "PVP_Settings"
+   }
+})
+
+-- // ตัวแปรสำหรับระบบ Aim & Spin
+local Settings = {
+    ShowFOV = true,
+    FOVRadius = 150,
+    SilentAim = true,
+    TargetPart = "Head",
+    SpinEnabled = false,
+    SpinSpeed = 50
+}
+
+-- // สร้างวงกลม FOV และเส้น Snapline
+local FOVCircle = Drawing.new("Circle")
+FOVCircle.Thickness = 2
+FOVCircle.Color = Color3.fromRGB(255, 255, 0)
+FOVCircle.Visible = Settings.ShowFOV
+
+local SnapLine = Drawing.new("Line")
+SnapLine.Thickness = 1.5
+SnapLine.Color = Color3.fromRGB(255, 0, 0)
+SnapLine.Visible = false
+
+-- // หมวดหมู่ Combat (เหมือนในรูป)
+local CombatTab = Window:CreateTab("Combat", 4483362458) -- ไอคอนดาบ
+
+CombatTab:CreateToggle({
+   Name = "Show FOV",
+   CurrentValue = true,
+   Callback = function(Value)
+      Settings.ShowFOV = Value
+      FOVCircle.Visible = Value
+   end,
+})
+
+CombatTab:CreateSlider({
+   Name = "FOV",
+   Range = {0, 800},
+   Increment = 1,
+   Suffix = "Radius",
+   CurrentValue = 150,
+   Callback = function(Value)
+      Settings.FOVRadius = Value
+   end,
+})
+
+CombatTab:CreateDropdown({
+   Name = "Aim Part",
+   Options = {"Head", "HumanoidRootPart"},
+   CurrentOption = "Head",
+   Callback = function(Option)
+      Settings.TargetPart = Option
+   end,
+})
+
+CombatTab:CreateToggle({
+   Name = "Block Spin (Anti-Aim)",
+   CurrentValue = false,
+   Callback = function(Value)
+      Settings.SpinEnabled = Value
+   end,
+})
+
+-- // หมวดหมู่อื่นๆ (ตัวอย่างโครงสร้างตามรูป)
+local GeneralTab = Window:CreateTab("General", 4483362458)
+local WeaponModTab = Window:CreateTab("Weapon Mod", 4483362458)
+local EspTab = Window:CreateTab("Esp", 4483362458)
+
+-- // ระบบการทำงานเบื้องหลัง
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 local Mouse = LocalPlayer:GetMouse()
-local Camera = workspace.CurrentCamera
 
--- // การตั้งค่า (Settings)
-local Settings = {
-    Enabled = true,
-    FOV_Radius = 150,
-    FOV_Color = Color3.fromRGB(255, 255, 0), -- สีเหลือง
-    Line_Color = Color3.fromRGB(255, 0, 0),   -- สีแดง
-    TargetPart = "Head"
-}
-
--- // สร้างวงกลม FOV
-local FOVCircle = Drawing.new("Circle")
-FOVCircle.Thickness = 2
-FOVCircle.Color = Settings.FOV_Color
-FOVCircle.Filled = false
-FOVCircle.Visible = true
-
--- // สร้างเส้น Snapline (เส้นสีแดงล็อกหัว)
-local SnapLine = Drawing.new("Line")
-SnapLine.Thickness = 1.5
-SnapLine.Color = Settings.Line_Color
-SnapLine.Visible = false
-
--- // ฟังก์ชันหาเป้าหมายที่ใกล้ที่สุดใน FOV
-local function GetClosestPlayer()
+RunService.RenderStepped:Connect(function()
+    -- อัปเดต FOV
+    FOVCircle.Position = Vector2.new(Mouse.X, Mouse.Y + 36)
+    FOVCircle.Radius = Settings.FOVRadius
+    
+    -- หาเป้าหมายที่ใกล้ที่สุด
     local target = nil
-    local shortestDistance = Settings.FOV_Radius
-
+    local shortestDistance = Settings.FOVRadius
     for _, v in pairs(Players:GetPlayers()) do
         if v ~= LocalPlayer and v.Character and v.Character:FindFirstChild(Settings.TargetPart) then
-            local pos, onScreen = Camera:WorldToViewportPoint(v.Character[Settings.TargetPart].Position)
-            
+            local pos, onScreen = workspace.CurrentCamera:WorldToViewportPoint(v.Character[Settings.TargetPart].Position)
             if onScreen then
                 local distance = (Vector2.new(pos.X, pos.Y) - Vector2.new(Mouse.X, Mouse.Y)).Magnitude
                 if distance < shortestDistance then
@@ -45,29 +104,19 @@ local function GetClosestPlayer()
             end
         end
     end
-    return target
-end
 
--- // อัปเดตการทำงานทุกเฟรม
-RunService.RenderStepped:Connect(function()
-    -- อัปเดตตำแหน่งวงกลม FOV ให้ตรงกับเมาส์
-    FOVCircle.Position = Vector2.new(Mouse.X, Mouse.Y + 36)
-    FOVCircle.Radius = Settings.FOV_Radius
-
-    local target = GetClosestPlayer()
-
-    if target and Settings.Enabled then
-        local targetPos, onScreen = Camera:WorldToViewportPoint(target.Position)
-        
-        if onScreen then
-            -- ลากเส้นจากกลาง FOV ไปยังหัวศัตรู
-            SnapLine.From = Vector2.new(Mouse.X, Mouse.Y + 36)
-            SnapLine.To = Vector2.new(targetPos.X, targetPos.Y)
-            SnapLine.Visible = true
-        else
-            SnapLine.Visible = false
-        end
+    -- แสดงเส้นสีแดง
+    if target and Settings.SilentAim then
+        local targetPos, _ = workspace.CurrentCamera:WorldToViewportPoint(target.Position)
+        SnapLine.From = Vector2.new(Mouse.X, Mouse.Y + 36)
+        SnapLine.To = Vector2.new(targetPos.X, targetPos.Y)
+        SnapLine.Visible = true
     else
         SnapLine.Visible = false
+    end
+
+    -- ระบบ Block Spin
+    if Settings.SpinEnabled and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        LocalPlayer.Character.HumanoidRootPart.CFrame = LocalPlayer.Character.HumanoidRootPart.CFrame * CFrame.Angles(0, math.rad(Settings.SpinSpeed), 0)
     end
 end)
