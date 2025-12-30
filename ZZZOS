@@ -1,4 +1,3 @@
-Lua
 -- [[ Zzzos’Dev | PVP Script - Full Version (with ESP) ]] --
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
