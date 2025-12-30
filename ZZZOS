@@ -1,0 +1,73 @@
+Lua
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+local Mouse = LocalPlayer:GetMouse()
+local Camera = workspace.CurrentCamera
+
+-- // การตั้งค่า (Settings)
+local Settings = {
+    Enabled = true,
+    FOV_Radius = 150,
+    FOV_Color = Color3.fromRGB(255, 255, 0), -- สีเหลือง
+    Line_Color = Color3.fromRGB(255, 0, 0),   -- สีแดง
+    TargetPart = "Head"
+}
+
+-- // สร้างวงกลม FOV
+local FOVCircle = Drawing.new("Circle")
+FOVCircle.Thickness = 2
+FOVCircle.Color = Settings.FOV_Color
+FOVCircle.Filled = false
+FOVCircle.Visible = true
+
+-- // สร้างเส้น Snapline (เส้นสีแดงล็อกหัว)
+local SnapLine = Drawing.new("Line")
+SnapLine.Thickness = 1.5
+SnapLine.Color = Settings.Line_Color
+SnapLine.Visible = false
+
+-- // ฟังก์ชันหาเป้าหมายที่ใกล้ที่สุดใน FOV
+local function GetClosestPlayer()
+    local target = nil
+    local shortestDistance = Settings.FOV_Radius
+
+    for _, v in pairs(Players:GetPlayers()) do
+        if v ~= LocalPlayer and v.Character and v.Character:FindFirstChild(Settings.TargetPart) then
+            local pos, onScreen = Camera:WorldToViewportPoint(v.Character[Settings.TargetPart].Position)
+            
+            if onScreen then
+                local distance = (Vector2.new(pos.X, pos.Y) - Vector2.new(Mouse.X, Mouse.Y)).Magnitude
+                if distance < shortestDistance then
+                    target = v.Character[Settings.TargetPart]
+                    shortestDistance = distance
+                end
+            end
+        end
+    end
+    return target
+end
+
+-- // อัปเดตการทำงานทุกเฟรม
+RunService.RenderStepped:Connect(function()
+    -- อัปเดตตำแหน่งวงกลม FOV ให้ตรงกับเมาส์
+    FOVCircle.Position = Vector2.new(Mouse.X, Mouse.Y + 36)
+    FOVCircle.Radius = Settings.FOV_Radius
+
+    local target = GetClosestPlayer()
+
+    if target and Settings.Enabled then
+        local targetPos, onScreen = Camera:WorldToViewportPoint(target.Position)
+        
+        if onScreen then
+            -- ลากเส้นจากกลาง FOV ไปยังหัวศัตรู
+            SnapLine.From = Vector2.new(Mouse.X, Mouse.Y + 36)
+            SnapLine.To = Vector2.new(targetPos.X, targetPos.Y)
+            SnapLine.Visible = true
+        else
+            SnapLine.Visible = false
+        end
+    else
+        SnapLine.Visible = false
+    end
+end)
