@@ -1,74 +1,29 @@
--- [[ Zzzos’Dev | PVP Script - Full Version (with ESP) ]] --
-
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
--- // สร้างหน้าต่างหลัก
-local Window = Rayfield:CreateWindow({
-   Name = "Zzzos’Dev | PVP",
-   LoadingTitle = "Zzzos’Dev PVP",
-   LoadingSubtitle = "by Zzzos",
-   ConfigurationSaving = {
-      Enabled = true,
-      FolderName = "ZzzosConfig",
-      FileName = "PVP_Settings"
-   }
-})
+-- // ตั้งค่าตัวแปร (Global Settings)
+getgenv().MagicBullet = false
+getgenv().ESP_Enabled = false
+getgenv().AimPart = "Head"
+getgenv().FOV = 371
 
--- // การตั้งค่า (Settings)
-local Settings = {
-    ShowFOV = true,
-    FOVRadius = 150,
-    SilentAim = true,
-    TargetPart = "Head",
-    SpinEnabled = false,
-    SpinSpeed = 50,
-    FOVMode = "Middle",
-    -- ESP Settings
-    EspEnabled = false,
-    NameEsp = true,
-    DistanceEsp = true,
-    HealthEsp = true,
-    BoxEsp = true,
-    TracerEsp = false, -- เส้นลากจากล่างจอ
-    EspColor = Color3.fromRGB(255, 255, 255) -- สีขาว
-}
-
--- // ระบบวาดเขียน (Drawing Library)
-local FOVCircle = Drawing.new("Circle")
-FOVCircle.Thickness = 2
-FOVCircle.Color = Color3.fromRGB(255, 255, 0)
-FOVCircle.Visible = Settings.ShowFOV
-FOVCircle.Filled = false
-
-local SnapLine = Drawing.new("Line")
-SnapLine.Thickness = 1.5
-SnapLine.Color = Color3.fromRGB(255, 0, 0)
-SnapLine.Visible = false
-
--- ESP Visuals Table
-local EspVisuals = {} -- เก็บ Drawing objects สำหรับ ESP
-
--- // บริการที่จำเป็น
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 local Mouse = LocalPlayer:GetMouse()
+local RunService = game:GetService("RunService")
 local Camera = workspace.CurrentCamera
 
--- // ฟังก์ชันหาเป้าหมาย (Core Function)
-local function GetClosestPlayer()
+-- // ฟังก์ชันหาเป้าหมายที่ใกล้ที่สุด (ภายในวง FOV)
+local function GetClosestTarget()
     local target = nil
-    local shortestDistance = Settings.FOVRadius
-    local Center = (Settings.FOVMode == "Middle") and Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2) or game:GetService("UserInputService"):GetMouseLocation()
-
+    local dist = getgenv().FOV
     for _, v in pairs(Players:GetPlayers()) do
-        if v ~= LocalPlayer and v.Character and v.Character:FindFirstChild(Settings.TargetPart) and v.Character:FindFirstChild("Humanoid") and v.Character.Humanoid.Health > 0 then
-            local pos, onScreen = Camera:WorldToViewportPoint(v.Character[Settings.TargetPart].Position)
+        if v ~= LocalPlayer and v.Character and v.Character:FindFirstChild("Humanoid") and v.Character.Humanoid.Health > 0 then
+            local pos, onScreen = Camera:WorldToScreenPoint(v.Character[getgenv().AimPart].Position)
             if onScreen then
-                local distance = (Vector2.new(pos.X, pos.Y) - Center).Magnitude
-                if distance < shortestDistance then
-                    target = v.Character[Settings.TargetPart]
-                    shortestDistance = distance
+                local magnitude = (Vector2.new(pos.X, pos.Y) - Vector2.new(Mouse.X, Mouse.Y)).Magnitude
+                if magnitude < dist then
+                    target = v.Character
+                    dist = magnitude
                 end
             end
         end
@@ -76,261 +31,99 @@ local function GetClosestPlayer()
     return target
 end
 
--- // --- UI Tabs --- //
-local GeneralTab = Window:CreateTab("General", 4483362458)
+-- // ระบบ Magic Bullet (หลอกค่า Mouse.Hit โดยไม่ล็อกกล้อง)
+local oldIndex
+oldIndex = hookmetamethod(game, "__index", function(self, key)
+    if getgenv().MagicBullet and not checkcaller() then
+        if self == Mouse and (key == "Hit" or key == "Target") then
+            local target = GetClosestTarget()
+            if target then
+                return (key == "Hit" and target[getgenv().AimPart].CFrame or target[getgenv().AimPart])
+            end
+        end
+    end
+    return oldIndex(self, key)
+end)
+
+-- // ระบบ ESP (มองทะลุ)
+local function CreateESP(player)
+    local Box = Drawing.new("Square")
+    local Name = Drawing.new("Text")
+    
+    RunService.RenderStepped:Connect(function()
+        if getgenv().ESP_Enabled and player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player ~= LocalPlayer then
+            local RootPart = player.Character.HumanoidRootPart
+            local pos, onScreen = Camera:WorldToViewportPoint(RootPart.Position)
+            
+            if onScreen then
+                -- ตั้งค่ากรอบ (Box)
+                Box.Visible = true
+                Box.Size = Vector2.new(2000 / pos.Z, 3000 / pos.Z)
+                Box.Position = Vector2.new(pos.X - Box.Size.X / 2, pos.Y - Box.Size.Y / 2)
+                Box.Color = Color3.fromRGB(255, 0, 0)
+                Box.Thickness = 1
+                
+                -- ตั้งค่าชื่อและระยะทาง (Name & Distance)
+                Name.Visible = true
+                Name.Text = player.Name .. " [" .. math.floor((RootPart.Position - LocalPlayer.Character.HumanoidRootPart.Position).Magnitude) .. "m]"
+                Name.Position = Vector2.new(pos.X, pos.Y - (Box.Size.Y / 2) - 15)
+                Name.Color = Color3.fromRGB(255, 255, 255)
+                Name.Outline = true
+                Name.Center = true
+            else
+                Box.Visible = false
+                Name.Visible = false
+            end
+        else
+            Box.Visible = false
+            Name.Visible = false
+        end
+    end)
+end
+
+-- รัน ESP ให้ทุกคนในเซิร์ฟ
+for _, player in pairs(Players:GetPlayers()) do CreateESP(player) end
+Players.PlayerAdded:Connect(CreateESP)
+
+-- // สร้างเมนู UI
+local Window = Rayfield:CreateWindow({
+    Name = "Hermanos'Dev | Blox Spin",
+    LoadingTitle = "Script Loading...",
+    LoadingSubtitle = "Magic Bullet & ESP Activated",
+})
+
 local CombatTab = Window:CreateTab("Combat", 4483362458)
-local WeaponModTab = Window:CreateTab("Weapon Mod", 4483362458)
-local CosmeticTab = Window:CreateTab("Cosmetic", 4483362458)
-local EspTab = Window:CreateTab("Esp", 4483362458)
+local VisualTab = Window:CreateTab("Visuals", 4483362458)
+
+-- เมนูหมวดต่อสู้
+CombatTab:CreateSection("Weapon Settings")
 
 CombatTab:CreateToggle({
-   Name = "Show FOV",
-   CurrentValue = true,
-   Callback = function(Value)
-      Settings.ShowFOV = Value
-      FOVCircle.Visible = Value
-   end,
+    Name = "Magic Bullet (ยิงเข้าหัวอัตโนมัติ)",
+    CurrentValue = false,
+    Callback = function(Value) getgenv().MagicBullet = Value end,
 })
 
 CombatTab:CreateSlider({
-   Name = "FOV Radius",
-   Range = {0, 800},
-   Increment = 1,
-   CurrentValue = 150,
-   Callback = function(Value)
-      Settings.FOVRadius = Value
-   end,
+    Name = "Aim Distance (FOV)",
+    Range = {0, 1000},
+    Increment = 1,
+    CurrentValue = 371,
+    Callback = function(Value) getgenv().FOV = Value end,
 })
 
 CombatTab:CreateDropdown({
-   Name = "FOV Mode",
-   Options = {"Middle", "Mouse"},
-   CurrentOption = "Middle",
-   Callback = function(Option)
-      Settings.FOVMode = Option
-   end,
+    Name = "Target Part",
+    Options = {"Head", "HumanoidRootPart"},
+    CurrentOption = {"Head"},
+    Callback = function(Option) getgenv().AimPart = Option[1] end,
 })
 
-CombatTab:CreateToggle({
-   Name = "Magic Bullet (Silent Aim)",
-   CurrentValue = true,
-   Callback = function(Value)
-      Settings.SilentAim = Value
-   end,
-})
+-- เมนูหมวดการมองเห็น
+VisualTab:CreateSection("ESP Settings")
 
-CombatTab:CreateDropdown({
-   Name = "Aim Part",
-   Options = {"Head", "HumanoidRootPart"},
-   CurrentOption = "Head",
-   Callback = function(Option)
-      Settings.TargetPart = Option
-   end,
-})
-
-CombatTab:CreateToggle({
-   Name = "Block Spin (Anti-Aim)",
-   CurrentValue = false,
-   Callback = function(Value)
-      Settings.SpinEnabled = Value
-   end,
-})
-
--- // --- ESP Tab --- //
-EspTab:CreateToggle({
-    Name = "Player ESP",
+VisualTab:CreateToggle({
+    Name = "Player ESP (มองทะลุคน)",
     CurrentValue = false,
-    Callback = function(Value)
-        Settings.EspEnabled = Value
-        if not Value then
-            for _, v in pairs(EspVisuals) do
-                v.Visible = false
-            end
-        end
-    end,
+    Callback = function(Value) getgenv().ESP_Enabled = Value end,
 })
-
-EspTab:CreateToggle({
-    Name = "Name ESP",
-    CurrentValue = true,
-    Callback = function(Value)
-        Settings.NameEsp = Value
-    end,
-})
-
-EspTab:CreateToggle({
-    Name = "Distance ESP",
-    CurrentValue = true,
-    Callback = function(Value)
-        Settings.DistanceEsp = Value
-    end,
-})
-
-EspTab:CreateToggle({
-    Name = "Health ESP",
-    CurrentValue = true,
-    Callback = function(Value)
-        Settings.HealthEsp = Value
-    end,
-})
-
-EspTab:CreateToggle({
-    Name = "Box ESP",
-    CurrentValue = true,
-    Callback = function(Value)
-        Settings.BoxEsp = Value
-    end,
-})
-
-EspTab:CreateToggle({
-    Name = "Tracer ESP (Line from bottom)",
-    CurrentValue = false,
-    Callback = function(Value)
-        Settings.TracerEsp = Value
-    end,
-})
-
--- // ระบบ Silent Aim (Hooking)
-local OldNamecall
-OldNamecall = hookmetamethod(game, "__namecall", function(Self, ...)
-    local Method = getnamecallmethod()
-    local Args = {...}
-    if not checkcaller() and Settings.SilentAim and (Method == "FindPartOnRayWithIgnoreList" or Method == "Raycast") then
-        local target = GetClosestPlayer()
-        if target then
-            if Method == "Raycast" then
-                Args[2] = (target.Position - Args[1]).Unit * 1000
-            end
-            return OldNamecall(Self, unpack(Args))
-        end
-    end
-    return OldNamecall(Self, ...)
-end)
-
-local OldIndex
-OldIndex = hookmetamethod(game, "__index", function(Self, Index)
-    if not checkcaller() and Settings.SilentAim and Self == Mouse and (Index == "Hit" or Index == "Target") then
-        local target = GetClosestPlayer()
-        if target then
-            return (Index == "Hit" and target.CFrame or target)
-        end
-    end
-    return OldIndex(Self, Index)
-end)
-
--- // ลูปหลัก (Visual, Spin, และ ESP)
-RunService.RenderStepped:Connect(function()
-    local ScreenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-    local UserMouse = game:GetService("UserInputService"):GetMouseLocation()
-    local CurrentCenter = (Settings.FOVMode == "Middle") and ScreenCenter or UserMouse
-
-    FOVCircle.Position = CurrentCenter
-    FOVCircle.Radius = Settings.FOVRadius
-
-    -- อัปเดต SnapLine
-    local targetAim = GetClosestPlayer()
-    if targetAim and Settings.SilentAim then
-        local targetPos, _ = Camera:WorldToViewportPoint(targetAim.Position)
-        SnapLine.From = CurrentCenter
-        SnapLine.To = Vector2.new(targetPos.X, targetPos.Y)
-        SnapLine.Visible = true
-    else
-        SnapLine.Visible = false
-    end
-
-    -- ระบบ Block Spin
-    if Settings.SpinEnabled and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-        LocalPlayer.Character.HumanoidRootPart.CFrame = LocalPlayer.Character.HumanoidRootPart.CFrame * CFrame.Angles(0, math.rad(Settings.SpinSpeed), 0)
-    end
-
-    -- ระบบ ESP
-    for _, player in pairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character:FindFirstChild("Humanoid") and player.Character.Humanoid.Health > 0 then
-            local hrp = player.Character.HumanoidRootPart
-            local head = player.Character:FindFirstChild("Head")
-
-            if not EspVisuals[player.Name] then
-                EspVisuals[player.Name] = {
-                    NameText = Drawing.new("Text"),
-                    DistanceText = Drawing.new("Text"),
-                    HealthText = Drawing.new("Text"),
-                    BoundingBox = Drawing.new("Quad"),
-                    TracerLine = Drawing.new("Line")
-                }
-                local visuals = EspVisuals[player.Name]
-                visuals.NameText.Size = 15
-                visuals.NameText.Color = Settings.EspColor
-                visuals.DistanceText.Size = 13
-                visuals.DistanceText.Color = Settings.EspColor
-                visuals.HealthText.Size = 13
-                visuals.HealthText.Color = Color3.fromRGB(0, 255, 0) -- สีเขียวสำหรับเลือด
-                
-                visuals.BoundingBox.Thickness = 1.5
-                visuals.BoundingBox.Color = Settings.EspColor
-                visuals.BoundingBox.Filled = false
-                
-                visuals.TracerLine.Thickness = 1.5
-                visuals.TracerLine.Color = Settings.EspColor
-            end
-
-            local visuals = EspVisuals[player.Name]
-            local hrpPos, onScreenHRP = Camera:WorldToViewportPoint(hrp.Position)
-            local headPos, onScreenHead = Camera:WorldToViewportPoint(head.Position)
-            local distance = math.floor((hrp.Position - LocalPlayer.Character.HumanoidRootPart.Position).Magnitude)
-
-            if Settings.EspEnabled and onScreenHRP then
-                -- Name ESP
-                visuals.NameText.Text = player.Name
-                visuals.NameText.Position = Vector2.new(headPos.X, headPos.Y - 20)
-                visuals.NameText.Visible = Settings.NameEsp
-
-                -- Distance ESP
-                visuals.DistanceText.Text = distance .. "m"
-                visuals.DistanceText.Position = Vector2.new(headPos.X, headPos.Y - 35)
-                visuals.DistanceText.Visible = Settings.DistanceEsp
-
-                -- Health ESP
-                local health = player.Character.Humanoid.Health
-                local maxHealth = player.Character.Humanoid.MaxHealth
-                visuals.HealthText.Text = "HP: " .. math.floor(health) .. "/" .. math.floor(maxHealth)
-                visuals.HealthText.Position = Vector2.new(hrpPos.X, hrpPos.Y + 20)
-                visuals.HealthText.Visible = Settings.HealthEsp
-
-                -- Box ESP
-                if Settings.BoxEsp then
-                    local headScreenPos = Vector2.new(headPos.X, headPos.Y)
-                    local hrpScreenPos = Vector2.new(hrpPos.X, hrpPos.Y)
-                    local height = math.abs(headScreenPos.Y - hrpScreenPos.Y) * 1.5
-                    local width = height / 2
-
-                    visuals.BoundingBox.PointA = Vector2.new(hrpScreenPos.X - width / 2, hrpScreenPos.Y + height / 2)
-                    visuals.BoundingBox.PointB = Vector2.new(hrpScreenPos.X + width / 2, hrpScreenPos.Y + height / 2)
-                    visuals.BoundingBox.PointC = Vector2.new(hrpScreenPos.X + width / 2, hrpScreenPos.Y - height / 2)
-                    visuals.BoundingBox.PointD = Vector2.new(hrpScreenPos.X - width / 2, hrpScreenPos.Y - height / 2)
-                    visuals.BoundingBox.Visible = true
-                else
-                    visuals.BoundingBox.Visible = false
-                end
-
-                -- Tracer ESP
-                visuals.TracerLine.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y) -- ลากจากกลางล่างจอ
-                visuals.TracerLine.To = Vector2.new(hrpPos.X, hrpPos.Y)
-                visuals.TracerLine.Visible = Settings.TracerEsp
-            else
-                -- ซ่อนทั้งหมดเมื่อ ESP ปิดหรืออยู่นอกจอ
-                visuals.NameText.Visible = false
-                visuals.DistanceText.Visible = false
-                visuals.HealthText.Visible = false
-                visuals.BoundingBox.Visible = false
-                visuals.TracerLine.Visible = false
-            end
-        else
-            -- ซ่อนถ้าตัวละครไม่อยู่ หรือตาย
-            if EspVisuals[player.Name] then
-                for _, v in pairs(EspVisuals[player.Name]) do
-                    v.Visible = false
-                end
-            end
-        end
-    end
-end)
