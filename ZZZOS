@@ -334,3 +334,6 @@ RunService.RenderStepped:Connect(function()
         end
     end
 end)
+local Camera = workspace.CurrentCamera
+Camera.CameraType = Enum.CameraType.Custom -- คืนค่าการควบคุมให้ผู้เล่น
+Camera.CameraSubject = game.Players.LocalPlayer.Character:FindFirstChild("Humanoid")
