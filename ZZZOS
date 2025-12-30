@@ -1,10 +1,11 @@
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
--- // ตั้งค่าตัวแปร (Global Settings)
+-- // GLOBAL SETTINGS
 getgenv().MagicBullet = false
-getgenv().ESP_Enabled = false
-getgenv().AimPart = "Head"
+getgenv().ShowFOV = true
 getgenv().FOV = 371
+getgenv().AimPart = "Head"
+getgenv().WhitelistedFriend = ""
 
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
@@ -12,12 +13,28 @@ local Mouse = LocalPlayer:GetMouse()
 local RunService = game:GetService("RunService")
 local Camera = workspace.CurrentCamera
 
--- // ฟังก์ชันหาเป้าหมายที่ใกล้ที่สุด (ภายในวง FOV)
+-- // สร้างวงกลม FOV ด้วย Drawing Library
+local FOVCircle = Drawing.new("Circle")
+FOVCircle.Thickness = 1
+FOVCircle.Color = Color3.fromRGB(255, 255, 255) -- สีขาวตามรูป
+FOVCircle.Transparency = 0.7
+FOVCircle.Filled = false
+FOVCircle.Visible = getgenv().ShowFOV
+FOVCircle.Radius = getgenv().FOV
+
+-- // ฟังก์ชันอัปเดตตำแหน่งวงกลม
+RunService.RenderStepped:Connect(function()
+    FOVCircle.Visible = getgenv().ShowFOV
+    FOVCircle.Radius = getgenv().FOV
+    FOVCircle.Position = Vector2.new(Mouse.X, Mouse.Y + 36) -- ปรับตำแหน่งให้ตรงกับปลายเมาส์
+end)
+
+-- // ฟังก์ชันหาเป้าหมาย
 local function GetClosestTarget()
     local target = nil
     local dist = getgenv().FOV
     for _, v in pairs(Players:GetPlayers()) do
-        if v ~= LocalPlayer and v.Character and v.Character:FindFirstChild("Humanoid") and v.Character.Humanoid.Health > 0 then
+        if v ~= LocalPlayer and v.Name ~= getgenv().WhitelistedFriend and v.Character and v.Character:FindFirstChild("Humanoid") and v.Character.Humanoid.Health > 0 then
             local pos, onScreen = Camera:WorldToScreenPoint(v.Character[getgenv().AimPart].Position)
             if onScreen then
                 local magnitude = (Vector2.new(pos.X, pos.Y) - Vector2.new(Mouse.X, Mouse.Y)).Magnitude
@@ -31,7 +48,7 @@ local function GetClosestTarget()
     return target
 end
 
--- // ระบบ Magic Bullet (หลอกค่า Mouse.Hit โดยไม่ล็อกกล้อง)
+-- // MAGIC BULLET LOGIC (Hooking)
 local oldIndex
 oldIndex = hookmetamethod(game, "__index", function(self, key)
     if getgenv().MagicBullet and not checkcaller() then
@@ -45,85 +62,67 @@ oldIndex = hookmetamethod(game, "__index", function(self, key)
     return oldIndex(self, key)
 end)
 
--- // ระบบ ESP (มองทะลุ)
-local function CreateESP(player)
-    local Box = Drawing.new("Square")
-    local Name = Drawing.new("Text")
-    
-    RunService.RenderStepped:Connect(function()
-        if getgenv().ESP_Enabled and player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player ~= LocalPlayer then
-            local RootPart = player.Character.HumanoidRootPart
-            local pos, onScreen = Camera:WorldToViewportPoint(RootPart.Position)
-            
-            if onScreen then
-                -- ตั้งค่ากรอบ (Box)
-                Box.Visible = true
-                Box.Size = Vector2.new(2000 / pos.Z, 3000 / pos.Z)
-                Box.Position = Vector2.new(pos.X - Box.Size.X / 2, pos.Y - Box.Size.Y / 2)
-                Box.Color = Color3.fromRGB(255, 0, 0)
-                Box.Thickness = 1
-                
-                -- ตั้งค่าชื่อและระยะทาง (Name & Distance)
-                Name.Visible = true
-                Name.Text = player.Name .. " [" .. math.floor((RootPart.Position - LocalPlayer.Character.HumanoidRootPart.Position).Magnitude) .. "m]"
-                Name.Position = Vector2.new(pos.X, pos.Y - (Box.Size.Y / 2) - 15)
-                Name.Color = Color3.fromRGB(255, 255, 255)
-                Name.Outline = true
-                Name.Center = true
-            else
-                Box.Visible = false
-                Name.Visible = false
-            end
-        else
-            Box.Visible = false
-            Name.Visible = false
-        end
-    end)
-end
-
--- รัน ESP ให้ทุกคนในเซิร์ฟ
-for _, player in pairs(Players:GetPlayers()) do CreateESP(player) end
-Players.PlayerAdded:Connect(CreateESP)
-
--- // สร้างเมนู UI
+-- // UI CREATION
 local Window = Rayfield:CreateWindow({
-    Name = "Hermanos'Dev | Blox Spin",
-    LoadingTitle = "Script Loading...",
-    LoadingSubtitle = "Magic Bullet & ESP Activated",
+    Name = "Hermanos'Dev | PVP",
+    LoadingTitle = "Loading System...",
+    LoadingSubtitle = "Blox Spin Version",
 })
 
 local CombatTab = Window:CreateTab("Combat", 4483362458)
-local VisualTab = Window:CreateTab("Visuals", 4483362458)
 
--- เมนูหมวดต่อสู้
-CombatTab:CreateSection("Weapon Settings")
-
+-- // เมนูตามรูปที่คุณส่งมา
 CombatTab:CreateToggle({
-    Name = "Magic Bullet (ยิงเข้าหัวอัตโนมัติ)",
-    CurrentValue = false,
-    Callback = function(Value) getgenv().MagicBullet = Value end,
+    Name = "Show FOV",
+    CurrentValue = true,
+    Callback = function(Value) getgenv().ShowFOV = Value end,
 })
 
 CombatTab:CreateSlider({
-    Name = "Aim Distance (FOV)",
-    Range = {0, 1000},
+    Name = "FOV",
+    Range = {0, 800},
     Increment = 1,
     CurrentValue = 371,
     Callback = function(Value) getgenv().FOV = Value end,
 })
 
 CombatTab:CreateDropdown({
-    Name = "Target Part",
+    Name = "FOV Mode",
+    Options = {"Middle", "Mouse"},
+    CurrentOption = {"Middle"},
+    Callback = function(Option) end,
+})
+
+CombatTab:CreateToggle({
+    Name = "Magic Bullet",
+    CurrentValue = false,
+    Callback = function(Value) getgenv().MagicBullet = Value end,
+})
+
+CombatTab:CreateDropdown({
+    Name = "Aim Part",
     Options = {"Head", "HumanoidRootPart"},
     CurrentOption = {"Head"},
     Callback = function(Option) getgenv().AimPart = Option[1] end,
 })
 
--- เมนูหมวดการมองเห็น
-VisualTab:CreateSection("ESP Settings")
+-- // รายชื่อเพื่อน
+local function GetFriendNames()
+    local names = {"--"}
+    for _, v in pairs(Players:GetPlayers()) do
+        if v ~= LocalPlayer then table.insert(names, v.Name) end
+    end
+    return names
+end
 
-VisualTab:CreateToggle({
-    Name = "Player ESP (มองทะลุคน)",
-    CurrentValue = false,
-    Callback = function(Value) getgenv().ESP_Enabled = Value end,
+local FriendDropdown = CombatTab:CreateDropdown({
+    Name = "Friend List",
+    Options = GetFriendNames(),
+    CurrentOption = {"--"},
+    Callback = function(Option) getgenv().WhitelistedFriend = Option[1] end,
+})
+
+CombatTab:CreateButton({
+    Name = "Refresh Friend List",
+    Callback = function() FriendDropdown:Refresh(GetFriendNames()) end,
 })
