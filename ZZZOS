@@ -1,4 +1,3 @@
-Lua
 -- บังคับเปลี่ยนชื่อใน UI หลังจากสคริปต์รันเสร็จ
 task.spawn(function()
     while task.wait(1) do
