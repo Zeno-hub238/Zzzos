@@ -1,128 +1,82 @@
+Lua
+-- [[ Zz205 Hub.pvp - Integrated Script Concept ]] --
+
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
--- // GLOBAL SETTINGS
-getgenv().MagicBullet = false
-getgenv().ShowFOV = true
-getgenv().FOV = 371
-getgenv().AimPart = "Head"
-getgenv().WhitelistedFriend = ""
-
-local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
-local Mouse = LocalPlayer:GetMouse()
-local RunService = game:GetService("RunService")
-local Camera = workspace.CurrentCamera
-
--- // สร้างวงกลม FOV ด้วย Drawing Library
-local FOVCircle = Drawing.new("Circle")
-FOVCircle.Thickness = 1
-FOVCircle.Color = Color3.fromRGB(255, 255, 255) -- สีขาวตามรูป
-FOVCircle.Transparency = 0.7
-FOVCircle.Filled = false
-FOVCircle.Visible = getgenv().ShowFOV
-FOVCircle.Radius = getgenv().FOV
-
--- // ฟังก์ชันอัปเดตตำแหน่งวงกลม
-RunService.RenderStepped:Connect(function()
-    FOVCircle.Visible = getgenv().ShowFOV
-    FOVCircle.Radius = getgenv().FOV
-    FOVCircle.Position = Vector2.new(Mouse.X, Mouse.Y + 36) -- ปรับตำแหน่งให้ตรงกับปลายเมาส์
-end)
-
--- // ฟังก์ชันหาเป้าหมาย
-local function GetClosestTarget()
-    local target = nil
-    local dist = getgenv().FOV
-    for _, v in pairs(Players:GetPlayers()) do
-        if v ~= LocalPlayer and v.Name ~= getgenv().WhitelistedFriend and v.Character and v.Character:FindFirstChild("Humanoid") and v.Character.Humanoid.Health > 0 then
-            local pos, onScreen = Camera:WorldToScreenPoint(v.Character[getgenv().AimPart].Position)
-            if onScreen then
-                local magnitude = (Vector2.new(pos.X, pos.Y) - Vector2.new(Mouse.X, Mouse.Y)).Magnitude
-                if magnitude < dist then
-                    target = v.Character
-                    dist = magnitude
-                end
-            end
-        end
-    end
-    return target
-end
-
--- // MAGIC BULLET LOGIC (Hooking)
-local oldIndex
-oldIndex = hookmetamethod(game, "__index", function(self, key)
-    if getgenv().MagicBullet and not checkcaller() then
-        if self == Mouse and (key == "Hit" or key == "Target") then
-            local target = GetClosestTarget()
-            if target then
-                return (key == "Hit" and target[getgenv().AimPart].CFrame or target[getgenv().AimPart])
-            end
-        end
-    end
-    return oldIndex(self, key)
-end)
-
--- // UI CREATION
+-- 1. ตั้งค่าหน้าต่างเมนู (Window)
 local Window = Rayfield:CreateWindow({
-    Name = "Hermanos'Dev | PVP",
-    LoadingTitle = "Loading System...",
-    LoadingSubtitle = "Blox Spin Version",
+   Name = "Zz205 Hub.pvp | Hermanos'Dev Concept",
+   LoadingTitle = "Initializing Systems...",
+   ConfigurationSaving = { Enabled = false }
 })
 
+-- 2. สร้างแท็บตามรูปวาด (Tabs)
 local CombatTab = Window:CreateTab("Combat", 4483362458)
+local ESPTab = Window:CreateTab("Esp", 4483362458)
 
--- // เมนูตามรูปที่คุณส่งมา
+-- 3. ตัวแปรควบคุมระบบ (Variables)
+_G.ShowFOV = false
+_G.FOVRadius = 150
+_G.MagicBullet = false
+_G.ESPEnabled = false
+
+-- 4. ฟังก์ชันวาดเส้นและวงกลม (Drawing Library)
+local FOVCircle = Drawing.new("Circle")
+FOVCircle.Thickness = 1
+FOVCircle.Color = Color3.fromRGB(255, 255, 255)
+FOVCircle.Filled = false
+
+local function CreateTracer()
+    local Line = Drawing.new("Line")
+    Line.Color = Color3.fromRGB(255, 0, 0) -- เส้นสีแดงล็อกหัว
+    Line.Thickness = 1.5
+    return Line
+end
+
+-- 5. Combat Tab: ระบบล็อกและ FOV
 CombatTab:CreateToggle({
-    Name = "Show FOV",
-    CurrentValue = true,
-    Callback = function(Value) getgenv().ShowFOV = Value end,
+   Name = "Show FOV",
+   CurrentValue = false,
+   Callback = function(Value) _G.ShowFOV = Value end,
 })
 
 CombatTab:CreateSlider({
-    Name = "FOV",
-    Range = {0, 800},
-    Increment = 1,
-    CurrentValue = 371,
-    Callback = function(Value) getgenv().FOV = Value end,
-})
-
-CombatTab:CreateDropdown({
-    Name = "FOV Mode",
-    Options = {"Middle", "Mouse"},
-    CurrentOption = {"Middle"},
-    Callback = function(Option) end,
+   Name = "FOV Radius",
+   Range = {0, 1000},
+   Increment = 10,
+   CurrentValue = 150,
+   Callback = function(Value) _G.FOVRadius = Value end,
 })
 
 CombatTab:CreateToggle({
-    Name = "Magic Bullet",
-    CurrentValue = false,
-    Callback = function(Value) getgenv().MagicBullet = Value end,
+   Name = "Magic Bullet (Headshot)",
+   CurrentValue = false,
+   Callback = function(Value) _G.MagicBullet = Value end,
 })
 
-CombatTab:CreateDropdown({
-    Name = "Aim Part",
-    Options = {"Head", "HumanoidRootPart"},
-    CurrentOption = {"Head"},
-    Callback = function(Option) getgenv().AimPart = Option[1] end,
+-- 6. ESP Tab: เส้นสีแดง Tracers
+ESPTab:CreateToggle({
+   Name = "Enable Red Tracers",
+   CurrentValue = false,
+   Callback = function(Value) _G.ESPEnabled = Value end,
 })
 
--- // รายชื่อเพื่อน
-local function GetFriendNames()
-    local names = {"--"}
-    for _, v in pairs(Players:GetPlayers()) do
-        if v ~= LocalPlayer then table.insert(names, v.Name) end
+-- 7. ระบบการทำงาน (Main Loop)
+game:GetService("RunService").RenderStepped:Connect(function()
+    -- อัปเดตวงกลม FOV
+    FOVCircle.Visible = _G.ShowFOV
+    FOVCircle.Radius = _G.FOVRadius
+    FOVCircle.Position = game:GetService("UserInputService"):GetMouseLocation()
+    
+    -- ลอจิกการล็อกหัว (ในเชิงการแสดงผล)
+    if _G.ESPEnabled then
+        -- ในสคริปต์จริงส่วนนี้จะใช้หาผู้เล่นที่ใกล้ที่สุดและลากเส้นไปที่ Head
+        -- นี่คือตัวอย่างคอนเซปต์การทำงาน
     end
-    return names
-end
+end)
 
-local FriendDropdown = CombatTab:CreateDropdown({
-    Name = "Friend List",
-    Options = GetFriendNames(),
-    CurrentOption = {"--"},
-    Callback = function(Option) getgenv().WhitelistedFriend = Option[1] end,
-})
-
-CombatTab:CreateButton({
-    Name = "Refresh Friend List",
-    Callback = function() FriendDropdown:Refresh(GetFriendNames()) end,
+Rayfield:Notify({
+   Title = "Success",
+   Content = "Script Loaded Successfully",
+   Duration = 5,
 })
